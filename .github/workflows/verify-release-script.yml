@@ -1,0 +1,45 @@
+name: Verify release-script regression tests
+
+on:
+  push:
+    branches: [ci/release-script-check-20261027]
+
+permissions:
+  contents: read
+
+jobs:
+  release-script:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: flutter-actions/setup-flutter@v4
+        with:
+          version: "3.41.9"
+          channel: "stable"
+      - name: Resolve app dependencies
+        working-directory: app
+        run: flutter pub get
+      - name: Format and show the focused diff
+        working-directory: app
+        run: |
+          dart format test/unit/support/release_script_test.dart
+          git diff -- test/unit/support/release_script_test.dart
+      - name: Analyze and run regression tests
+        working-directory: app
+        run: |
+          dart analyze test/unit/support/release_script_test.dart
+          flutter test test/unit/support/release_script_test.dart --reporter expanded
+      - name: Confirm the original script fails the CRLF regression test
+        working-directory: app
+        run: |
+          git show d01fdb14c978fa8b2b13e29a50cc0feaefe5c1b9:support/scripts/release.dart > ../support/scripts/release.dart
+          set +e
+          flutter test test/unit/support/release_script_test.dart --reporter expanded --plain-name "CRLF lockfile" > original-result.log 2>&1
+          result=$?
+          set -e
+          cat original-result.log
+          test "$result" -ne 0
+          grep -F "Pattern not found" original-result.log
+          git restore ../support/scripts/release.dart
